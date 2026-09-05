@@ -4,10 +4,11 @@ version = "0.1.0"
 description = "A Strands voice agent that makes the phone calls you dread: navigates the IVR, waits on hold, talks to the rep, and interrupts you only for a real decision."
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    # Voice core. bidi-all pulls the Nova Sonic / OpenAI / Gemini bidirectional providers.
-    # Pinned on first working install (Day 1) — bidi is an experimental API surface.
-    "strands-agents[bidi-all]",
-    "strands-agents-tools",
+    # Voice core. `bidi` = Nova Sonic (primary); `bidi-openai` = OpenAI Realtime
+    # (documented fallback provider). Pinned exactly — bidi is an experimental,
+    # fast-moving API surface. Verified against this version on Day 1.
+    "strands-agents[bidi,bidi-openai]==1.54.0",
+    "strands-agents-tools==0.8.8",
     # Telephony bridge
     "twilio",
     "fastapi",
