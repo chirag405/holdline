@@ -214,6 +214,36 @@ transcript, a live hold timer, and the **Decision card** (question + option
 buttons + countdown) when Holdline needs your call. Past calls, with transcript
 and confirmation number, are listed below and at `/calls/{id}`.
 
+## Day 7 — Strands Graph + provider memory + AgentCore
+
+**Strands Graph.** Each call now runs through a `Graph` (`holdline/graph.py`):
+`planner → call → debrief`. The `call` node is the live Caller + Supervisor
+session; the `debrief` node runs the Scribe, updates provider memory, and emits
+`call_ended`. Set `USE_GRAPH=false` to call the same steps directly instead.
+
+**Provider memory** (`MEMORY_BACKEND`):
+
+- `local` (default) — in-process, seeded with the practice line's menu path.
+  Durable for the life of the bridge process.
+- `agentcore` — Amazon Bedrock AgentCore Memory (`pip install -e ".[agentcore]"`,
+  optionally set `AGENTCORE_MEMORY_ID`). One event per call under session id
+  `provider:<slug>`; durable across runs.
+
+Either way: the Planner reads a provider's known IVR path before the call, the
+Scribe writes the path + outcome back after. The **second** call to the same
+provider starts already knowing the menu.
+
+**AgentCore Runtime** (optional deploy): `deploy/agentcore/` — a
+`BedrockAgentCoreApp` that mounts the bridge, a Dockerfile, and step-by-step
+instructions. The local `uvicorn` path (`scripts/run_bridge.py`) is unchanged and
+is the tested one.
+
+Offline check:
+
+```bash
+python scripts/verify_day7.py
+```
+
 ## Run the tests
 
 ```bash

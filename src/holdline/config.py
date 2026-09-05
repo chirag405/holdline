@@ -47,7 +47,11 @@ class Settings:
     # State
     state_backend: str  # "dynamodb" | "memory"
     ddb_table_prefix: str
+
+    # Provider memory + AgentCore
+    memory_backend: str  # "local" | "agentcore"
     agentcore_memory_id: str
+    use_graph: bool  # run each call through the Strands Graph orchestrator
 
     # Supervisor / escalation
     supervisor_enabled: bool
@@ -85,7 +89,9 @@ def get_settings() -> Settings:
         practice_ivr_number=os.environ.get("PRACTICE_IVR_NUMBER", ""),
         state_backend=os.environ.get("STATE_BACKEND", "dynamodb"),
         ddb_table_prefix=os.environ.get("DDB_TABLE_PREFIX", "holdline"),
+        memory_backend=os.environ.get("MEMORY_BACKEND", "local"),
         agentcore_memory_id=os.environ.get("AGENTCORE_MEMORY_ID", ""),
+        use_graph=os.environ.get("USE_GRAPH", "true").lower() != "false",
         supervisor_enabled=os.environ.get("SUPERVISOR_ENABLED", "true").lower() != "false",
         supervisor_interval_s=float(os.environ.get("SUPERVISOR_INTERVAL_S", "6")),
         supervisor_max_checks=int(os.environ.get("SUPERVISOR_MAX_CHECKS", "20")),

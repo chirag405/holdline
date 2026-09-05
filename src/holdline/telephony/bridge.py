@@ -248,10 +248,16 @@ async def media_stream(ws: WebSocket) -> None:
     stream.set_transcript_cb(session.add_turn)  # route final turns into the session
 
     try:
-        await run_call_session(session, stream, instructions=instructions)
+        if get_settings().use_graph:
+            from holdline.graph import run_call_graph
+
+            # The Graph's debrief node runs the Scribe + memory + call_ended event.
+            await run_call_graph(session, stream, task, call_id, instructions=instructions)
+        else:
+            await run_call_session(session, stream, instructions=instructions)
+            await _finalize(task, call_id, session.transcript, stream)
     finally:
         await stream.aclose()
-        await _finalize(task, call_id, session.transcript, stream)
 
 
 async def _finalize(task: dict, call_id: str | None, transcript: list[dict], stream) -> None:

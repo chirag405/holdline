@@ -29,6 +29,8 @@ dependencies = [
 dev = ["pytest", "pytest-asyncio", "ruff"]
 # Local mic spike only (not needed on the server / AgentCore path).
 mic = ["strands-agents[bidi-pyaudio]"]
+# AgentCore Runtime host + AgentCore Memory client.
+agentcore = ["bedrock-agentcore==1.22.0"]
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -13,9 +13,16 @@
 | **Supervisor** | text `Agent` | every ~8 s during the call | Reads the running transcript against the Brief; returns `{continue \| escalate(question, options) \| abort(reason)}`. Safety net + the multi-agent story. |
 | **Scribe** | text `Agent` | once, post-call | Transcript → `summary`, `confirmation_number`, `outcome_status`, `follow_up_draft`, `follow_up_date`. Writes the learned IVR path back to Memory. |
 
-Orchestration: Strands `Graph` — `Planner → CallSession → Scribe`. `CallSession` is
-a custom node that runs Caller (`BidiAgent`) and Supervisor (`Agent`) concurrently
-on a shared asyncio **transcript bus**.
+Orchestration: **Strands `Graph`** (`holdline/graph.py`) — three `MultiAgentBase`
+nodes, `planner → call → debrief`:
+- **planner** — ensure a Brief exists (passthrough when the dashboard pre-planned
+  via `POST /tasks`).
+- **call** — run the live `CallSession`: Caller (`BidiAgent` + Nova Sonic) and
+  Supervisor (`Agent`) concurrently on a shared asyncio transcript bus.
+- **debrief** — Scribe the transcript, persist the call, write learned IVR paths
+  to provider memory, emit `call_ended`.
+
+`USE_GRAPH=false` runs the same steps without the Graph wrapper.
 
 ### Telephony bridge (`src/holdline/telephony/`)
 
