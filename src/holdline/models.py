@@ -85,7 +85,7 @@ class CallSummary(BaseModel):
 __all__ = [
     "Boundaries",
     "CallBrief",
-    "SupervisorVerdict",
     "CallSummary",
+    "SupervisorVerdict",
     "Verdict",
 ]

@@ -206,9 +206,20 @@ def _get(logical: str, key: dict[str, Any]) -> dict[str, Any] | None:
 
 
 __all__ = [
-    "create_task", "set_task_brief", "set_task_status", "get_task",
-    "create_call", "append_transcript", "set_call_status", "finish_call",
-    "get_call", "list_calls",
-    "create_decision", "resolve_decision", "get_decision", "pending_decisions",
-    "new_id", "now_ts",
+    "append_transcript",
+    "create_call",
+    "create_decision",
+    "create_task",
+    "finish_call",
+    "get_call",
+    "get_decision",
+    "get_task",
+    "list_calls",
+    "new_id",
+    "now_ts",
+    "pending_decisions",
+    "resolve_decision",
+    "set_call_status",
+    "set_task_brief",
+    "set_task_status",
 ]

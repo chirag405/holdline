@@ -54,10 +54,11 @@ def main() -> int:
     print("construct (no network):")
 
     def _build():
-        from holdline.config import get_settings
         from strands import tool
         from strands.experimental.bidi import BidiAgent
         from strands.experimental.bidi.tools import stop_conversation
+
+        from holdline.config import get_settings
 
         get_settings.cache_clear()
 
