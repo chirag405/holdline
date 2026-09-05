@@ -85,6 +85,7 @@ def create_call(task_id: str) -> dict[str, Any]:
         "recording_url": None,
         "outcome": None,
         "confirmation_number": None,
+        "summary": None,
         "started_at": now_ts(),
         "ended_at": None,
     }
@@ -112,6 +113,7 @@ def finish_call(
     outcome: str,
     confirmation_number: str | None = None,
     recording_url: str | None = None,
+    summary: dict[str, Any] | None = None,
 ) -> None:
     _update(
         "calls",
@@ -121,6 +123,7 @@ def finish_call(
             "outcome": outcome,
             "confirmation_number": confirmation_number,
             "recording_url": recording_url,
+            "summary": summary,
             "ended_at": now_ts(),
         },
     )

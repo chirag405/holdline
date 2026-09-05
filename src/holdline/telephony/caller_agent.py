@@ -47,16 +47,39 @@ HOW TO BEHAVE:
 """
 
 
-def build_caller_agent(stream: Any, *, instructions: str | None = None) -> Any:
+def build_caller_agent(
+    stream: Any, *, instructions: str | None = None, brief: dict | None = None
+) -> Any:
     """Create the per-call BidiAgent. `stream` is the live TwilioMediaStream: the
     DTMF tool injects tones into it, and `record_outcome` stashes the result on it
-    so the bridge can log/persist it after the call."""
+    so the bridge can log/persist it after the call. `brief` (a CallBrief dict) is
+    exposed to the agent via `lookup_task_context` for mid-call recall."""
     from strands import tool
     from strands.experimental.bidi import BidiAgent
     from strands.experimental.bidi.models.nova_sonic import BidiNovaSonicModel
     from strands.experimental.bidi.tools import stop_conversation
 
     s = get_settings()
+
+    @tool
+    def lookup_task_context(question: str = "") -> str:
+        """Recall details about this call: the objective, identity/account details
+        to verify with, and what you may or may not agree to. Use it if you need an
+        account number or forget a boundary mid-conversation."""
+        if not brief:
+            return "No structured brief for this call; follow your instructions."
+        import json as _json
+
+        return _json.dumps(
+            {
+                "objective": brief.get("objective"),
+                "provider_name": brief.get("provider_name"),
+                "identity_info": brief.get("identity_info", {}),
+                "boundaries": brief.get("boundaries", {}),
+                "success_criteria": brief.get("success_criteria", []),
+            },
+            indent=2,
+        )
 
     @tool
     async def press_keys(digits: str) -> str:
@@ -97,7 +120,7 @@ def build_caller_agent(stream: Any, *, instructions: str | None = None) -> Any:
     return BidiAgent(
         model=model,
         system_prompt=instructions or _PRACTICE_GOAL,
-        tools=[press_keys, record_outcome, stop_conversation],
+        tools=[press_keys, record_outcome, lookup_task_context, stop_conversation],
     )
 
 

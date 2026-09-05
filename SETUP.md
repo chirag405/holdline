@@ -115,6 +115,45 @@ Offline check (no telephony/AWS — walks the IVR the way Twilio would):
 python scripts/verify_day3.py
 ```
 
+## Day 4 — state, Planner, Scribe
+
+**State backend.** `STATE_BACKEND=memory` (in `.env`) keeps everything in-process —
+good for local dev and the offline checks. `STATE_BACKEND=dynamodb` (default) needs
+AWS and the tables:
+
+```bash
+python scripts/create_tables.py     # creates holdline-tasks / -calls / -decisions (on-demand)
+```
+
+**Planner + Scribe** are text agents on Bedrock (`TEXT_MODEL_ID`, default
+`us.amazon.nova-lite-v1:0`). Try the Planner on its own:
+
+```bash
+python scripts/plan_demo.py "Cancel my Iron Peak Fitness gym membership, effective end of the month. Get a confirmation number. Don't accept a pause or a discount."
+```
+
+It prints the structured **Call Brief** and the rendered Caller instructions.
+
+**End to end**, once the bridge + tunnel are up:
+
+```bash
+# plan a task, then call the practice line with it
+curl -s localhost:8000/tasks -H 'content-type: application/json' \
+  -d '{"request":"Cancel my Iron Peak Fitness membership","fields":{"account_number":"IPF-99123"}}'
+# -> {"task_id":"task_...","brief":{...}}
+python scripts/place_call.py $env:PRACTICE_IVR_NUMBER   # then POST /calls with that task_id
+```
+
+`POST /calls` accepts `{"to","task_id"}` (preferred), `{"to","request"}` (plans
+inline), or `{"to","goal"}` (raw passthrough). After the call, the **Scribe**
+writes a summary + confirmation number to the `calls` row and closes the task.
+
+Offline check:
+
+```bash
+python scripts/verify_day4.py
+```
+
 ## Run the tests
 
 ```bash

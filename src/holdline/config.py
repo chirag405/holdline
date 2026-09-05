@@ -32,6 +32,10 @@ class Settings:
     model_provider: str  # "nova_bidi" | "nova_native"
     nova_sonic_model_id: str
     nova_sonic_voice: str
+    # Text model for the Planner / Scribe (Bedrock). Nova Lite by default to keep
+    # model-access grants minimal; set to e.g. us.anthropic.claude-sonnet-4-6 for
+    # higher-quality extraction.
+    text_model_id: str
 
     # Twilio
     twilio_account_sid: str
@@ -41,6 +45,7 @@ class Settings:
     practice_ivr_number: str
 
     # State
+    state_backend: str  # "dynamodb" | "memory"
     ddb_table_prefix: str
     agentcore_memory_id: str
 
@@ -66,11 +71,13 @@ def get_settings() -> Settings:
             "NOVA_SONIC_MODEL_ID", "amazon.nova-2-sonic-v1:0"
         ),
         nova_sonic_voice=os.environ.get("NOVA_SONIC_VOICE", "matthew"),
+        text_model_id=os.environ.get("TEXT_MODEL_ID", "us.amazon.nova-lite-v1:0"),
         twilio_account_sid=os.environ.get("TWILIO_ACCOUNT_SID", ""),
         twilio_auth_token=os.environ.get("TWILIO_AUTH_TOKEN", ""),
         twilio_from_number=os.environ.get("TWILIO_FROM_NUMBER", ""),
         public_ws_url=os.environ.get("PUBLIC_WS_URL", ""),
         practice_ivr_number=os.environ.get("PRACTICE_IVR_NUMBER", ""),
+        state_backend=os.environ.get("STATE_BACKEND", "dynamodb"),
         ddb_table_prefix=os.environ.get("DDB_TABLE_PREFIX", "holdline"),
         agentcore_memory_id=os.environ.get("AGENTCORE_MEMORY_ID", ""),
         dashboard_host=os.environ.get("DASHBOARD_HOST", "127.0.0.1"),
