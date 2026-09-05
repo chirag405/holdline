@@ -1,7 +1,12 @@
 # Holdline — Setup
 
-Growing document. Right now it covers Day 1 (voice core spike). Telephony,
-dashboard, and AgentCore sections are added as those milestones land.
+Read the [`README.md`](README.md) first for what Holdline is and the quickstart.
+This document is the full detail, organised as the day-by-day build log: each
+section adds one layer and ends with an offline `verify_dayN.py` check.
+
+**Nothing here needs AWS or Twilio** except where a section explicitly says
+"real call" — the dashboard and the whole agent pipeline run on in-process
+backends (`STATE_BACKEND=memory`, `MEMORY_BACKEND=local`).
 
 ## Prerequisites
 

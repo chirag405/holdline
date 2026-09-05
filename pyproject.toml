@@ -2,6 +2,9 @@
 name = "holdline"
 version = "0.1.0"
 description = "A Strands voice agent that makes the phone calls you dread: navigates the IVR, waits on hold, talks to the rep, and interrupts you only for a real decision."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Chirag Dhouni" }]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     # Voice core. `bidi` = Nova Sonic (primary); `bidi-openai` = OpenAI Realtime

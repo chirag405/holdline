@@ -1,6 +1,7 @@
 # Holdline — Architecture
 
-> Diagram PNG (`architecture.png`) is produced from the mermaid below on Day 9.
+> Diagram: [`architecture.png`](architecture.png) / [`architecture.mmd`](architecture.mmd),
+> and the mermaid block in the top-level [`README.md`](../README.md).
 
 ## Components
 
@@ -26,12 +27,26 @@ nodes, `planner → call → debrief`:
 
 ### Telephony bridge (`src/holdline/telephony/`)
 
-- `POST /calls` → Twilio REST `calls.create` with TwiML `<Connect><Stream url=wss://…/ts>`.
-- WS `/ts`: Twilio `media` frames (μ-law 8 kHz base64) → PCM16 16 kHz → Nova Sonic
-  input; Nova Sonic output (PCM 24 kHz) → μ-law 8 kHz → Twilio `media`. Barge-in →
-  Twilio `clear`.
-- `send_dtmf`: synthesized DTMF dual-tones injected into the media stream (primary)
-  or Twilio REST call-update `<Play digits>` (fallback).
+- `POST /calls` → Twilio REST `calls.create` with TwiML `<Connect><Stream url=wss://…/ts>`,
+  plus a `status_callback` to `/call-status`.
+- WS `/ts`: Twilio `media` frames (G.711 μ-law 8 kHz base64) ⇄ linear PCM16
+  8 kHz — Nova Sonic runs at `input_rate=output_rate=8000` so the hot path needs
+  no resampling (`audio.py` keeps a streamed resampler for the 16k/24k fallback).
+  Barge-in (`BidiInterruptionEvent`) → Twilio `clear`.
+- `send_dtmf`: real DTMF dual-tones synthesized as μ-law and injected as `media`
+  frames — Media Streams has no send-DTMF message, and this keeps the stream
+  alive. `press_keys` falls back to telling the Caller to speak the digits.
+- `POST /call-status`: Twilio call-lifecycle webhook. `busy` / `no-answer` /
+  `failed` / `canceled` with no media stream ever connected → a recorded failure
+  instead of a task stuck in `calling`.
+
+### Dashboard API + live stream
+
+`GET /config`, `GET /tasks/{id}`, `GET /calls`, `GET /calls/{id}`, and
+`GET /stream` — Server-Sent Events (`turn`, `status`, `decision_open`,
+`decision_resolved`, `call_ended`) that the Next.js dashboard folds into the live
+call view. Events come from `holdline/events.py` (in-process pub/sub + a replay
+buffer).
 
 ### Escalation (the human-in-the-loop)
 
@@ -48,28 +63,39 @@ row → push to the dashboard Decision card (question + options + countdown) →
 | `holdline-calls` | `call_id`, `task_id`, `transcript`, `recording_url`, `outcome`, `confirmation_number`, timings |
 | `holdline-decisions` | `decision_id`, `call_id`, `question`, `options`, `answer`, `resolved_at` |
 
-### Memory (AgentCore, `src/holdline/memory/`)
+### Provider memory (`src/holdline/memory.py`)
 
-- `provider_profiles`: company → IVR path, hold behaviour, retention tactics seen.
-- `user_accounts`: masked account identifiers per provider.
+`get_provider_hint(name)` / `record_call_learnings(name, ivr_path, outcome, …)`.
+Two backends behind `MEMORY_BACKEND`:
+
+- `local` (default) — in-process dict, seeded with the practice line's menu path.
+- `agentcore` — Amazon Bedrock **AgentCore Memory** (`MemoryClient`), one event
+  per call under session id `provider:<slug>`; durable across runs.
+
+The Planner reads a provider's known IVR path before a call; the Scribe writes
+the observed path back after. The second call to a provider starts already
+knowing its menu.
+
+### Error handling
+
+Every failure lands as a recorded outcome, never a hang: no-answer/busy →
+`/call-status`; mid-call drop → Scribe on the partial transcript; Nova stream
+error before any transcript → clean `error` row, no Scribe; Planner (Bedrock)
+failure → degraded plain brief; DTMF rejected → speak-the-digits fallback;
+transferred in circles → Supervisor `abort`.
+
+### Observability
+
+Strands' built-in OpenTelemetry, wired in `src/holdline/telemetry.py`. Console
+spans with `TRACING_CONSOLE=true`; OTLP export when `OTEL_EXPORTER_OTLP_ENDPOINT`
+is set. See [`observability.md`](observability.md).
 
 ## Flow
 
-```mermaid
-flowchart TD
-    U[User: plain-language request] --> P[Planner agent]
-    P -->|Call Brief| CS[CallSession graph node]
-    subgraph CS[CallSession]
-      C[Caller: BidiAgent + Nova 2 Sonic]
-      S[Supervisor agent]
-      C <-->|transcript bus| S
-    end
-    CS <-->|Media Streams WS| TW[Twilio Programmable Voice]
-    TW <-->|PSTN| R[IVR / hold queue / rep]
-    S -->|escalate| D[Dashboard Decision card]
-    D -->|user answer| C
-    CS -->|transcript| SC[Scribe agent]
-    SC --> DB[(DynamoDB: tasks/calls/decisions)]
-    SC --> MEM[(AgentCore Memory)]
-    P -.reads.-> MEM
-```
+See the mermaid diagram in the top-level [`README.md`](../README.md) or
+[`architecture.png`](architecture.png). In one line:
+
+`request → Planner (Brief, + memory hint) → Caller ⇄ Supervisor on the live
+call ⇄ Twilio ⇄ PSTN; Supervisor/Caller → escalation → your answer on the
+dashboard → Caller resumes; hangup → Debrief (Scribe → DynamoDB + provider
+memory + call_ended SSE).`

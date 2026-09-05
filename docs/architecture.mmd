@@ -1,0 +1,50 @@
+flowchart TB
+    NC["Dashboard (Next.js)<br/>new-call form"]
+    LP["Dashboard<br/>live transcript, hold timer,<br/>Decision card"]
+
+    subgraph api["Bridge — FastAPI + SSE"]
+      T["POST /tasks"]
+      CALL["POST /calls"]
+      WS["WS /ts<br/>Twilio Media Streams"]
+      DEC["/decisions"]
+      SSE["/stream (SSE)"]
+      CSW["/call-status"]
+      PIVR["/practice/*<br/>practice IVR fixture"]
+    end
+
+    subgraph graph["Strands Graph (per call): planner then call then debrief"]
+      PL["Planner<br/>request to Call Brief"]
+      CALLER["Caller<br/>BidiAgent + Nova 2 Sonic<br/>press_keys, escalate_to_user, record_outcome"]
+      SUP["Supervisor<br/>text Agent: continue / escalate / abort"]
+      DBR["Debrief<br/>Scribe + memory + call_ended"]
+    end
+
+    subgraph aws["AWS"]
+      BR["Amazon Bedrock<br/>Nova 2 Sonic (voice) + Nova Lite (text)"]
+      MEM["AgentCore Memory<br/>learned IVR path per provider"]
+      DDB[("DynamoDB<br/>tasks, calls, decisions")]
+      ACR["AgentCore Runtime<br/>optional deploy host"]
+    end
+
+    TWILIO["Twilio Programmable Voice"]
+    PSTN(["PSTN: IVR, hold queue, representative"])
+
+    NC --> T --> PL
+    NC --> CALL --> TWILIO
+    TWILIO --> WS
+    PL --> CALLER
+    CALLER <--> SUP
+    CALLER --> DBR
+    WS <--> CALLER
+    CALLER <--> BR
+    SUP --> BR
+    PL -->|read hint| MEM
+    DBR -->|write learnings| MEM
+    DBR --> DDB
+    SUP -->|escalate| DEC
+    DEC -->|your answer| CALLER
+    DBR --> SSE --> LP
+    CALLER -->|turns| SSE
+    TWILIO <--> PSTN
+    TWILIO --> CSW
+    ACR -->|hosts| WS
