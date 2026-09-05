@@ -16,6 +16,7 @@ import contextlib
 
 import structlog
 
+from holdline import events
 from holdline.config import get_settings
 from holdline.state import store
 
@@ -34,9 +35,17 @@ class CallSession:
         self.transcript: list[dict] = []
         self.agent = None  # the BidiAgent; set by the runner
         self.ended = False
+        self.status = "connecting"
         self.escalations: list[dict] = []
         # decision_id -> {"question","options","answer","event"}
         self._pending: dict[str, dict] = {}
+
+    def set_status(self, status: str) -> None:
+        self.status = status
+        events.publish("status", call_id=self.call_id, status=status)
+        if self.call_id:
+            with contextlib.suppress(Exception):
+                store.set_call_status(self.call_id, status)
 
     # -- transcript (TranscriptCb: (role, text, is_final)) ----------------- #
     def add_turn(self, role: str, text: str, is_final: bool = True) -> None:
@@ -44,6 +53,7 @@ class CallSession:
             return
         self.transcript.append({"role": role, "text": text})
         log.info("turn", role=role, text=text)
+        events.publish("turn", call_id=self.call_id, role=role, text=text)
         if self.call_id:
             with contextlib.suppress(Exception):
                 store.append_transcript(self.call_id, role, text)
@@ -87,14 +97,26 @@ class CallSession:
         ev = asyncio.Event()
         self._pending[did] = {"question": question, "options": options, "answer": None, "event": ev}
         log.info("escalation.open", decision_id=did, question=question, options=options)
+        self.set_status("waiting_on_you")
+        events.publish(
+            "decision_open",
+            call_id=self.call_id,
+            decision_id=did,
+            question=question,
+            options=options,
+            context=context,
+            timeout_s=s.escalation_timeout_s,
+        )
 
         default = (self.brief or {}).get(
             "default_on_timeout", "hold firm and refuse any counter-offer"
         )
+        timed_out = False
         try:
             await asyncio.wait_for(ev.wait(), timeout=s.escalation_timeout_s)
             answer = self._pending[did]["answer"] or default
         except TimeoutError:
+            timed_out = True
             answer = f"(no response in {int(s.escalation_timeout_s)}s) {default}"
             log.info("escalation.timeout", decision_id=did)
 
@@ -104,6 +126,15 @@ class CallSession:
             with contextlib.suppress(Exception):
                 store.resolve_decision(did, answer)
         log.info("escalation.resolved", decision_id=did, answer=answer)
+        events.publish(
+            "decision_resolved",
+            call_id=self.call_id,
+            decision_id=did,
+            answer=answer,
+            timed_out=timed_out,
+        )
+        if not self.ended:
+            self.set_status("on_call")
         return answer
 
     async def steer(self, guidance: str) -> None:
@@ -197,6 +228,14 @@ async def run_call_session(
     session.agent = agent
 
     SESSIONS.append(session)
+    events.publish(
+        "call_started",
+        call_id=session.call_id,
+        task_id=session.task.get("task_id"),
+        provider=(session.brief or {}).get("provider_name"),
+        objective=(session.brief or {}).get("objective"),
+    )
+    session.set_status("on_call")
     supervisor = asyncio.create_task(_supervise(session), name="supervisor")
     try:
         await agent.run(inputs=[stream.input()], outputs=[stream.output()])
@@ -209,6 +248,7 @@ async def run_call_session(
             SESSIONS.remove(session)
         with contextlib.suppress(Exception):
             await agent.stop()
+        session.set_status("ended")
     return session
 
 

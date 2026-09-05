@@ -4,12 +4,17 @@ and the Nova Sonic Caller agent.
 Routes
 ------
 GET  /health            liveness
+GET  /config            non-secret settings the dashboard needs (practice number, flags)
 POST /tasks             {"request","fields"} -> plan a task (Planner), returns the Brief
+GET  /tasks/{id}        task + Brief
 POST /calls             {"to","task_id"|"request"|"goal"} -> places the call
+GET  /calls             call history (newest first)
+GET  /calls/{id}        one call: transcript, outcome, confirmation #, summary
 GET  /twiml             Twilio fetches this when the call connects; returns <Connect><Stream>
 WS   /ts                Twilio Media Streams socket -> Caller + Supervisor -> (post-call) Scribe
 GET  /decisions         pending mid-call escalations awaiting the account holder
 POST /decisions/{id}    {"answer": "..."} -> resolve one, the call resumes
+GET  /stream            Server-Sent Events: turn / status / decision_open / call_ended / ...
 GET  /practice/*        the self-hosted practice IVR (Day 3 target)
 
 Run locally:
@@ -21,11 +26,14 @@ Run locally:
 from __future__ import annotations
 
 import asyncio
+import json
 
 import structlog
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from holdline import events
 from holdline.config import get_settings
 from holdline.practice.ivr import router as practice_router
 from holdline.session import CallSession, all_pending, resolve_pending, run_call_session
@@ -34,6 +42,13 @@ from holdline.telephony.twilio_io import TwilioMediaStream
 log = structlog.get_logger("telephony.bridge")
 
 app = FastAPI(title="Holdline bridge")
+# The dashboard is a separate Next.js app; allow it to call the API in dev.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # The self-hosted practice IVR (Day 3 demo target) rides on the same server.
 app.include_router(practice_router)
 
@@ -47,6 +62,21 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/config")
+async def config() -> JSONResponse:
+    s = get_settings()
+    return JSONResponse(
+        {
+            "practice_ivr_number": s.practice_ivr_number,
+            "has_twilio": bool(s.twilio_account_sid and s.twilio_from_number),
+            "public_ws_url_set": bool(s.public_ws_url),
+            "supervisor_enabled": s.supervisor_enabled,
+            "escalation_timeout_s": s.escalation_timeout_s,
+            "state_backend": s.state_backend,
+        }
+    )
+
+
 @app.post("/tasks")
 async def create_task_route(request: Request) -> JSONResponse:
     body = await request.json()
@@ -55,7 +85,30 @@ async def create_task_route(request: Request) -> JSONResponse:
     from holdline.orchestrator import create_and_plan
 
     task = create_and_plan(body["request"], body.get("fields") or {})
-    return JSONResponse({"task_id": task["task_id"], "brief": task["brief"]})
+    return JSONResponse({"task_id": task["task_id"], "brief": task["brief"], "task": task})
+
+
+@app.get("/tasks/{task_id}")
+async def get_task_route(task_id: str) -> JSONResponse:
+    from holdline.state import store
+
+    task = store.get_task(task_id)
+    return JSONResponse(task or {"error": "not found"}, status_code=200 if task else 404)
+
+
+@app.get("/calls")
+async def list_calls_route() -> JSONResponse:
+    from holdline.state import store
+
+    return JSONResponse({"calls": store.list_calls()})
+
+
+@app.get("/calls/{call_id}")
+async def get_call_route(call_id: str) -> JSONResponse:
+    from holdline.state import store
+
+    call = store.get_call(call_id)
+    return JSONResponse(call or {"error": "not found"}, status_code=200 if call else 404)
 
 
 @app.post("/calls")
@@ -117,6 +170,38 @@ async def resolve_decision_route(decision_id: str, request: Request) -> JSONResp
     return JSONResponse({"resolved": ok}, status_code=200 if ok else 404)
 
 
+@app.get("/stream")
+async def stream_events(request: Request) -> StreamingResponse:
+    """Server-Sent Events feed of everything happening on calls, for the dashboard."""
+    try:
+        after = int(request.query_params.get("after", "0"))
+    except ValueError:
+        after = 0
+
+    once = request.query_params.get("once") in ("1", "true", "yes")
+
+    async def gen():
+        for evt in events.recent(after):
+            yield f"data: {json.dumps(evt)}\n\n"
+        if once:
+            return
+        async with events.subscribe() as q:
+            while True:
+                if await request.is_disconnected():
+                    return
+                try:
+                    evt = await asyncio.wait_for(q.get(), timeout=15)
+                    yield f"data: {json.dumps(evt)}\n\n"
+                except TimeoutError:
+                    yield ": keepalive\n\n"
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.get("/twiml")
 async def twiml() -> Response:
     s = get_settings()
@@ -173,19 +258,30 @@ async def _finalize(task: dict, call_id: str | None, transcript: list[dict], str
     outcome = getattr(stream, "outcome", None)
     confirmation = getattr(stream, "confirmation_number", None)
     log.info("ws.done", turns=len(transcript), outcome=outcome, confirmation_number=confirmation)
-    if not call_id:
-        return
-    try:
-        from holdline.orchestrator import summarize_and_persist
+    summary: dict | None = None
+    if call_id:
+        try:
+            from holdline.orchestrator import summarize_and_persist
 
-        # Scribe is sync + does a Bedrock call; keep it off the event loop.
-        summary = await asyncio.to_thread(summarize_and_persist, call_id, task, transcript)
-        log.info("scribe.persisted", call_id=call_id, summary=summary)
-    except Exception as exc:  # noqa: BLE001 - a summary failure must not lose the call row
-        log.warning("scribe.failed", call_id=call_id, error=str(exc))
-        from holdline.state import store
+            # Scribe is sync + does a Bedrock call; keep it off the event loop.
+            summary = await asyncio.to_thread(summarize_and_persist, call_id, task, transcript)
+            log.info("scribe.persisted", call_id=call_id, summary=summary)
+        except Exception as exc:  # noqa: BLE001 - a summary failure must not lose the call row
+            log.warning("scribe.failed", call_id=call_id, error=str(exc))
+            from holdline.state import store
 
-        store.finish_call(call_id, outcome=outcome or "unknown", confirmation_number=confirmation)
+            store.finish_call(
+                call_id, outcome=outcome or "unknown", confirmation_number=confirmation
+            )
+    events.publish(
+        "call_ended",
+        call_id=call_id,
+        task_id=task.get("task_id"),
+        outcome=(summary or {}).get("outcome_status") or outcome or "unknown",
+        confirmation_number=(summary or {}).get("confirmation_number") or confirmation,
+        summary=summary,
+        turns=len(transcript),
+    )
 
 
 def _https_base(u: str) -> str:

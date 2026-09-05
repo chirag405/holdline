@@ -11,9 +11,12 @@ from holdline.config import get_settings
 def _memory_state(monkeypatch):
     monkeypatch.setenv("STATE_BACKEND", "memory")
     get_settings.cache_clear()
+    from holdline import events
     from holdline.state import memory
 
     memory.reset()
+    events.reset()
     yield
     memory.reset()
+    events.reset()
     get_settings.cache_clear()
