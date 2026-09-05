@@ -1,0 +1,40 @@
+[project]
+name = "holdline"
+version = "0.1.0"
+description = "A Strands voice agent that makes the phone calls you dread: navigates the IVR, waits on hold, talks to the rep, and interrupts you only for a real decision."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Voice core. bidi-all pulls the Nova Sonic / OpenAI / Gemini bidirectional providers.
+    # Pinned on first working install (Day 1) — bidi is an experimental API surface.
+    "strands-agents[bidi-all]",
+    "strands-agents-tools",
+    # Telephony bridge
+    "twilio",
+    "fastapi",
+    "uvicorn[standard]",
+    "websockets",
+    # Audio resampling (mu-law 8k <-> PCM 16k/24k). audioop-lts backports the stdlib
+    # module removed in 3.13; on 3.12 the stdlib audioop is still present.
+    "numpy",
+    # State + config
+    "boto3",
+    "python-dotenv",
+    "structlog",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+# Local mic spike only (not needed on the server / AgentCore path).
+mic = ["strands-agents[bidi-pyaudio]"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
