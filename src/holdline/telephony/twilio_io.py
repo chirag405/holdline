@@ -161,19 +161,29 @@ class TwilioMediaStream:
         await self._ws.send_text(json.dumps({"event": "clear", "streamSid": self.stream_sid}))
         log.info("twilio.clear_sent")
 
-    async def send_dtmf(self, digits: str) -> None:
-        """Inject touch-tones into the call as audio (keeps the stream alive)."""
+    async def send_dtmf(self, digits: str) -> bool:
+        """Inject touch-tones into the call as audio (keeps the stream alive).
+        Returns False if the stream isn't ready yet."""
         if not self.stream_sid:
             log.warning("twilio.send_dtmf_no_stream", digits=digits)
-            return
-        for frame_b64 in digits_to_mulaw_frames(digits):
-            await self._ws.send_text(
-                json.dumps(
-                    {"event": "media", "streamSid": self.stream_sid, "media": {"payload": frame_b64}}
+            return False
+        try:
+            for frame_b64 in digits_to_mulaw_frames(digits):
+                await self._ws.send_text(
+                    json.dumps(
+                        {
+                            "event": "media",
+                            "streamSid": self.stream_sid,
+                            "media": {"payload": frame_b64},
+                        }
+                    )
                 )
-            )
-            await asyncio.sleep(0.02)
+                await asyncio.sleep(0.02)
+        except Exception as exc:  # noqa: BLE001 - socket may have closed mid-send
+            log.warning("twilio.dtmf_send_failed", digits=digits, error=str(exc))
+            return False
         log.info("twilio.dtmf_sent", digits=digits)
+        return True
 
 
 class _StreamClosed(Exception):

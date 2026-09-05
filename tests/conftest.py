@@ -11,6 +11,7 @@ from holdline.config import get_settings
 def _memory_state(monkeypatch):
     monkeypatch.setenv("STATE_BACKEND", "memory")
     monkeypatch.setenv("MEMORY_BACKEND", "local")
+    monkeypatch.setenv("TRACING_ENABLED", "false")
     get_settings.cache_clear()
     from holdline import events
     from holdline import memory as provider_memory

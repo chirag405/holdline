@@ -48,6 +48,9 @@ def test_table_prefix_override():
         supervisor_interval_s=6.0,
         supervisor_max_checks=20,
         escalation_timeout_s=90.0,
+        tracing_enabled=False,
+        tracing_console=False,
+        otel_service_name="holdline",
         dashboard_host="127.0.0.1",
         dashboard_port=8000,
     )

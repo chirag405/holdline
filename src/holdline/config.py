@@ -59,6 +59,11 @@ class Settings:
     supervisor_max_checks: int
     escalation_timeout_s: float
 
+    # Observability (Strands OpenTelemetry)
+    tracing_enabled: bool
+    tracing_console: bool
+    otel_service_name: str
+
     # Dashboard
     dashboard_host: str
     dashboard_port: int
@@ -96,6 +101,9 @@ def get_settings() -> Settings:
         supervisor_interval_s=float(os.environ.get("SUPERVISOR_INTERVAL_S", "6")),
         supervisor_max_checks=int(os.environ.get("SUPERVISOR_MAX_CHECKS", "20")),
         escalation_timeout_s=float(os.environ.get("ESCALATION_TIMEOUT_S", "90")),
+        tracing_enabled=os.environ.get("TRACING_ENABLED", "true").lower() != "false",
+        tracing_console=os.environ.get("TRACING_CONSOLE", "false").lower() == "true",
+        otel_service_name=os.environ.get("OTEL_SERVICE_NAME", "holdline"),
         dashboard_host=os.environ.get("DASHBOARD_HOST", "127.0.0.1"),
         dashboard_port=int(os.environ.get("DASHBOARD_PORT", "8000")),
     )

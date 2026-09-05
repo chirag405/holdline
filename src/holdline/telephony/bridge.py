@@ -37,9 +37,12 @@ from holdline import events
 from holdline.config import get_settings
 from holdline.practice.ivr import router as practice_router
 from holdline.session import CallSession, all_pending, resolve_pending, run_call_session
+from holdline.telemetry import init_telemetry
 from holdline.telephony.twilio_io import TwilioMediaStream
 
 log = structlog.get_logger("telephony.bridge")
+
+init_telemetry()  # Strands OpenTelemetry tracing (OTLP if configured, else off)
 
 app = FastAPI(title="Holdline bridge")
 # The dashboard is a separate Next.js app; allow it to call the API in dev.
@@ -55,6 +58,9 @@ app.include_router(practice_router)
 # call_sid -> {"task": <task dict>, "instructions": <str>}. Populated by POST /calls,
 # consumed by the WS handler once Twilio reports the call_sid in its `start` frame.
 _pending: dict[str, dict] = {}
+# call_sids whose media stream actually connected -- so /call-status can tell a
+# genuine no-answer/busy from a call that connected and later completed normally.
+_ws_seen: set[str] = set()
 
 
 @app.get("/health")
@@ -128,16 +134,58 @@ async def place_call(request: Request) -> JSONResponse:
 
     from twilio.rest import Client
 
+    base = _https_base(s.public_ws_url)
     client = Client(s.twilio_account_sid, s.twilio_auth_token)
-    call = client.calls.create(
-        to=to,
-        from_=s.twilio_from_number,
-        url=f"{_https_base(s.public_ws_url)}/twiml",
-        method="GET",
-    )
+    try:
+        call = client.calls.create(
+            to=to,
+            from_=s.twilio_from_number,
+            url=f"{base}/twiml",
+            method="GET",
+            status_callback=f"{base}/call-status",
+            status_callback_event=["initiated", "ringing", "answered", "completed"],
+            status_callback_method="POST",
+        )
+    except Exception as exc:  # noqa: BLE001 - surface Twilio errors as a clean 502
+        log.warning("call.place_failed", error=str(exc))
+        return JSONResponse({"error": f"Twilio: {exc}"}, status_code=502)
     _pending[call.sid] = {"task": task, "instructions": instructions}
     log.info("call.placed", call_sid=call.sid, to=to, task_id=task.get("task_id"))
     return JSONResponse({"call_sid": call.sid, "status": call.status})
+
+
+@app.post("/call-status")
+async def call_status(request: Request) -> Response:
+    """Twilio call-lifecycle webhook. Turns a call that never connected
+    (busy / no-answer / failed / canceled) into a recorded failure instead of a
+    task stuck in 'calling' forever."""
+    form = await request.form()
+    call_sid = str(form.get("CallSid", ""))
+    status = str(form.get("CallStatus", ""))
+    log.info("call.status", call_sid=call_sid, status=status)
+
+    if status in ("busy", "no-answer", "failed", "canceled") and call_sid not in _ws_seen:
+        pending = _pending.pop(call_sid, {})
+        task = pending.get("task") or {}
+        outcome = "no_answer" if status == "no-answer" else status.replace("-", "_")
+        from holdline.state import store
+
+        try:
+            if task.get("task_id"):
+                call = store.create_call(task["task_id"])
+                store.finish_call(call["call_id"], outcome=outcome)
+                store.set_task_status(task["task_id"], "failed")
+                cid = call["call_id"]
+            else:
+                cid = None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("call.status_persist_failed", error=str(exc))
+            cid = None
+        events.publish(
+            "call_ended", call_id=cid, task_id=task.get("task_id"), outcome=outcome,
+            confirmation_number=None, summary=None, turns=0,
+        )
+    return Response(status_code=204)
 
 
 def _resolve_goal(body: dict) -> tuple[dict, str | None]:
@@ -229,6 +277,7 @@ async def media_stream(ws: WebSocket) -> None:
     pending: dict = {}
     for _ in range(50):
         if stream.call_sid:
+            _ws_seen.add(stream.call_sid)  # this call genuinely connected
             pending = _pending.pop(stream.call_sid, {})
             break
         await asyncio.sleep(0.1)

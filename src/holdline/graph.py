@@ -89,8 +89,21 @@ class DebriefNode(_Node):
         session: CallSession = run["session"]
         t = run["task"]
         call_id = run.get("call_id")
+        call_error = run.get("call_error")
+        recorded = getattr(session.stream, "outcome", None)
         summary: dict | None = None
-        if call_id:
+
+        if call_id and call_error and not recorded and len(session.transcript) < 2:
+            # The call blew up before anything useful happened -- don't pay for a
+            # Scribe pass on an empty transcript, just record the failure.
+            from holdline.state import store
+
+            with contextlib.suppress(Exception):
+                store.finish_call(call_id, outcome="error")
+            with contextlib.suppress(Exception):
+                store.set_task_status(t["task_id"], "failed")
+            log.info("graph.debrief_error_shortcut", call_id=call_id, error=call_error)
+        elif call_id:
             try:
                 from holdline.orchestrator import summarize_and_persist
 
@@ -104,7 +117,7 @@ class DebriefNode(_Node):
                 with contextlib.suppress(Exception):
                     store.finish_call(
                         call_id,
-                        outcome=getattr(session.stream, "outcome", None) or "unknown",
+                        outcome=recorded or "unknown",
                         confirmation_number=getattr(session.stream, "confirmation_number", None),
                     )
         run["summary"] = summary

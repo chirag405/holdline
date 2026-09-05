@@ -38,7 +38,7 @@ google-genai==2.22.0
 googleapis-common-protos==1.75.3
 greenlet==3.5.5
 h11==0.16.0
--e git+https://github.com/chirag405/holdline.git@36f7157f65919ae300f7636ad51b8a11885477a9#egg=holdline
+-e git+https://github.com/chirag405/holdline.git@8a2420c00313563de3a4587fb27478cb2bf2cb70#egg=holdline
 httpcore==1.0.9
 httptools==0.8.0
 httpx==0.28.1

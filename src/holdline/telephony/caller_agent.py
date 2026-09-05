@@ -110,8 +110,13 @@ def build_caller_agent(
         """Press keys on the phone keypad (DTMF touch-tones). Use for IVR menus and
         for entering account or phone numbers. `digits` may contain 0-9 * # and
         ',' for a short pause."""
-        await stream.send_dtmf(digits)
-        return f"Pressed {digits}."
+        ok = await stream.send_dtmf(digits)
+        if ok:
+            return f"Pressed {digits}."
+        return (
+            f"Could not send tones for {digits} (the line isn't ready or the "
+            "keypress didn't register). Say the digits out loud instead."
+        )
 
     @tool
     def record_outcome(status: str, confirmation_number: str = "", notes: str = "") -> str:

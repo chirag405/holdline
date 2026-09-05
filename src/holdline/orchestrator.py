@@ -31,12 +31,22 @@ def _guess_provider(request_text: str) -> str | None:
 
 def create_and_plan(request_text: str, fields: dict[str, str] | None = None) -> dict:
     """Create a task row, run the Planner, persist the Brief. Returns the task dict
-    (with `brief` populated)."""
+    (with `brief` populated). If the Planner (Bedrock) fails, fall back to a plain
+    brief built from the request so a call can still proceed, degraded."""
     task = store.create_task(request_text, fields)
     guess = _guess_provider(request_text)
     hint = memory.get_provider_hint(guess) if guess else None
 
-    brief = plan_call(request_text, fields, ivr_hint=hint)
+    try:
+        brief = plan_call(request_text, fields, ivr_hint=hint)
+    except Exception as exc:  # noqa: BLE001 - degrade, don't fail the whole flow
+        log.warning("planner.failed", task_id=task["task_id"], error=str(exc))
+        brief = CallBrief(
+            objective=request_text,
+            provider_name=(guess or (fields or {}).get("provider") or "the provider"),
+            identity_info=fields or {},
+            ivr_hint=hint,
+        )
     if not brief.ivr_hint:
         brief.ivr_hint = memory.get_provider_hint(brief.provider_name)
 

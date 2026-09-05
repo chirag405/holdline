@@ -244,6 +244,35 @@ Offline check:
 python scripts/verify_day7.py
 ```
 
+## Day 8 — hardening + tracing + the demo scenarios
+
+**Error paths** now all land as a recorded outcome, never a hang:
+
+| failure | becomes |
+|---|---|
+| no-answer / busy / failed / canceled (Twilio `/call-status` webhook) | `calls` row `outcome=no_answer` (etc.), task `failed` |
+| media stream drops mid-call | debrief runs the Scribe on the partial transcript |
+| Nova stream error before anything happens | `calls` row `outcome=error`, no Scribe pass |
+| DTMF tones don't register | `press_keys` tells the Caller to say the digits instead |
+| transferred in circles / wrong department | Supervisor `abort` → Caller wraps up with `record_outcome("failed")` |
+| Planner (Bedrock) fails | degrades to a plain brief from the request; the call still runs |
+
+**Tracing**: Strands OpenTelemetry is on by default. `TRACING_CONSOLE=true` prints
+spans; set `OTEL_EXPORTER_OTLP_ENDPOINT` to send them to Jaeger / Tempo / X-Ray.
+See [`docs/observability.md`](docs/observability.md).
+
+**The three demo scenarios** (needs the full live stack + `PRACTICE_IVR_NUMBER`):
+
+```bash
+python scripts/seed_scenarios.py        # a: clean cancel · b: retention→hold firm · c: escalation→accept
+```
+
+Offline check (scenarios via the practice IVR TwiML, error paths, telemetry):
+
+```bash
+python scripts/verify_day8.py
+```
+
 ## Run the tests
 
 ```bash
