@@ -48,9 +48,11 @@ Plain-language request
    DynamoDB (tasks / calls / decisions) + AgentCore Memory (learned IVR paths)
 ```
 
-Stack: **Strands Agents** (`BidiAgent`, multi-agent graph) · **Amazon Nova 2
-Sonic** (speech-to-speech) · **Twilio** (outbound + Media Streams) · **AWS
-Bedrock AgentCore Runtime + Memory** · **DynamoDB** · **FastAPI** dashboard.
+Stack: **Strands Agents** (`BidiAgent`, Planner / Caller / Supervisor / Scribe) ·
+**Amazon Nova 2 Sonic** (speech-to-speech) · **Amazon Bedrock** (Nova Lite for the
+text agents) · **Twilio** (outbound + Media Streams) · **AWS Bedrock AgentCore
+Runtime + Memory** (planned) · **DynamoDB** (or in-process) · **FastAPI** API +
+Server-Sent Events · **Next.js** dashboard (shadcn component registries).
 
 ## Setup
 

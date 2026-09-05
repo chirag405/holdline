@@ -187,6 +187,33 @@ Offline check:
 python scripts/verify_day5.py
 ```
 
+## Day 6 — the dashboard (Next.js)
+
+The backend gained a dashboard-facing API: `GET /config`, `GET /calls`,
+`GET /calls/{id}`, `GET /tasks/{id}`, and `GET /stream` (Server-Sent Events —
+`turn`, `status`, `decision_open`, `decision_resolved`, `call_ended`). CORS is
+open in dev.
+
+The dashboard itself is a separate **Next.js** app in `frontend/`, built entirely
+from shadcn-registry components (Watermelon UI, prompt-kit, Motion Primitives,
+Aceternity).
+
+```bash
+# terminal 1 — backend (memory backend needs no AWS/Twilio to show the shell)
+STATE_BACKEND=memory python scripts/run_bridge.py
+
+# terminal 2 — dashboard
+cd frontend
+npm install
+cp .env.local.example .env.local     # NEXT_PUBLIC_API_BASE=http://localhost:8000
+npm run dev                          # http://localhost:3000
+```
+
+The page: plan a call on the left, watch it run on the right — streaming
+transcript, a live hold timer, and the **Decision card** (question + option
+buttons + countdown) when Holdline needs your call. Past calls, with transcript
+and confirmation number, are listed below and at `/calls/{id}`.
+
 ## Run the tests
 
 ```bash

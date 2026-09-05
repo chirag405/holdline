@@ -1,0 +1,30 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-nova",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "app/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "rtl": false,
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "menuColor": "default",
+  "menuAccent": "subtle",
+  "registries": {
+    "@prompt-kit": "https://www.prompt-kit.com/c/{name}.json",
+    "@motion-primitives": "https://raw.githubusercontent.com/ibelick/motion-primitives/main/public/c/{name}.json",
+    "@aceternity": "https://ui.aceternity.com/registry/{name}.json",
+    "@watermelon": "https://raw.githubusercontent.com/WatermelonCorp/watermellon-registry/main/public/r/{name}.json"
+  }
+}
