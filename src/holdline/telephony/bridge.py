@@ -21,12 +21,15 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import JSONResponse, Response
 
 from holdline.config import get_settings
+from holdline.practice.ivr import router as practice_router
 from holdline.telephony.caller_agent import build_caller_agent
 from holdline.telephony.twilio_io import TwilioMediaStream
 
 log = structlog.get_logger("telephony.bridge")
 
 app = FastAPI(title="Holdline bridge")
+# The self-hosted practice IVR (Day 3 demo target) rides on the same server.
+app.include_router(practice_router)
 
 # In-memory: goal override to hand the next inbound WS. Fine for a single-call demo;
 # Day 4 keys this by call_sid via DynamoDB.
@@ -113,7 +116,12 @@ async def media_stream(ws: WebSocket) -> None:
             await agent.stop()
         except Exception:  # noqa: BLE001
             pass
-        log.info("ws.done", turns=len(transcript))
+        log.info(
+            "ws.done",
+            turns=len(transcript),
+            outcome=getattr(stream, "outcome", None),
+            confirmation_number=getattr(stream, "confirmation_number", None),
+        )
 
 
 def _https_base(u: str) -> str:

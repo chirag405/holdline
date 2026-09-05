@@ -87,6 +87,34 @@ scripts/place_call.py ──POST /calls──► bridge ──Twilio REST──�
                                                     BidiAgent + Nova 2 Sonic
 ```
 
+## Day 3 — the practice IVR + first autonomous run
+
+The practice IVR (`src/holdline/practice/ivr.py`) is served by the same bridge.
+See [`practice_ivr/README.md`](practice_ivr/README.md) for the full flow.
+
+1. Take a **second** Twilio number (keep the first as Holdline's caller ID). Set
+   its **Voice → "A call comes in"** webhook to `https://<tunnel>/practice/entry`
+   (HTTP POST). Put the number in `.env` as `PRACTICE_IVR_NUMBER`.
+2. With the bridge + tunnel running:
+
+   ```bash
+   python scripts/place_call.py $env:PRACTICE_IVR_NUMBER    # PowerShell
+   ```
+
+Holdline dials the practice line, presses/says its way through the menu
+(`2` → `4`), waits silently on hold, greets the rep, declines the retention
+offer, and captures the `IPF######` confirmation number. The bridge logs it:
+
+```
+ws.done  outcome=cancelled  confirmation_number=IPF473921
+```
+
+Offline check (no telephony/AWS — walks the IVR the way Twilio would):
+
+```bash
+python scripts/verify_day3.py
+```
+
 ## Run the tests
 
 ```bash
