@@ -142,6 +142,8 @@ python scripts/seed_scenarios.py        # a: clean cancel · b: retention→hold
 ```
 
 Full details and the day-by-day build log: [`SETUP.md`](SETUP.md).
+**Running it for real / submitting it:** [`docs/YOUR-TODO.md`](docs/YOUR-TODO.md)
+— a top-to-bottom runbook for accounts, a live call, the video, and Devpost.
 AgentCore Runtime deploy: [`deploy/agentcore/README.md`](deploy/agentcore/README.md).
 Tracing: [`docs/observability.md`](docs/observability.md).
 
