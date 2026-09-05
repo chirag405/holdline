@@ -3,12 +3,14 @@ and the Nova Sonic Caller agent.
 
 Routes
 ------
-GET  /health          liveness
-POST /tasks           {"request": "...", "fields": {...}} -> plan a task (Planner), returns the Brief
-POST /calls           {"to": "+1...", "task_id"|"request"|"goal": ...} -> places the call
-GET  /twiml           Twilio fetches this when the call connects; returns <Connect><Stream>
-WS   /ts              Twilio Media Streams socket -> Caller agent -> (post-call) Scribe
-GET  /practice/*      the self-hosted practice IVR (Day 3 target)
+GET  /health            liveness
+POST /tasks             {"request","fields"} -> plan a task (Planner), returns the Brief
+POST /calls             {"to","task_id"|"request"|"goal"} -> places the call
+GET  /twiml             Twilio fetches this when the call connects; returns <Connect><Stream>
+WS   /ts                Twilio Media Streams socket -> Caller + Supervisor -> (post-call) Scribe
+GET  /decisions         pending mid-call escalations awaiting the account holder
+POST /decisions/{id}    {"answer": "..."} -> resolve one, the call resumes
+GET  /practice/*        the self-hosted practice IVR (Day 3 target)
 
 Run locally:
     python scripts/run_bridge.py
@@ -26,7 +28,7 @@ from fastapi.responses import JSONResponse, Response
 
 from holdline.config import get_settings
 from holdline.practice.ivr import router as practice_router
-from holdline.telephony.caller_agent import build_caller_agent
+from holdline.session import CallSession, all_pending, resolve_pending, run_call_session
 from holdline.telephony.twilio_io import TwilioMediaStream
 
 log = structlog.get_logger("telephony.bridge")
@@ -100,6 +102,21 @@ def _resolve_goal(body: dict) -> tuple[dict, str | None]:
     return {"task_id": None, "request_text": body.get("goal", "")}, body.get("goal")
 
 
+@app.get("/decisions")
+async def list_decisions() -> JSONResponse:
+    return JSONResponse({"pending": all_pending()})
+
+
+@app.post("/decisions/{decision_id}")
+async def resolve_decision_route(decision_id: str, request: Request) -> JSONResponse:
+    body = await request.json()
+    answer = (body.get("answer") or "").strip()
+    if not answer:
+        return JSONResponse({"error": "missing 'answer'"}, status_code=400)
+    ok = resolve_pending(decision_id, answer)
+    return JSONResponse({"resolved": ok}, status_code=200 if ok else 404)
+
+
 @app.get("/twiml")
 async def twiml() -> Response:
     s = get_settings()
@@ -120,20 +137,7 @@ async def media_stream(ws: WebSocket) -> None:
 
     from holdline.state import store
 
-    transcript: list[dict] = []
-    call_id: str | None = None
-
-    def on_transcript(role: str, text: str, is_final: bool) -> None:
-        if is_final and text.strip():
-            transcript.append({"role": role, "text": text})
-            log.info("transcript", role=role, text=text)
-            if call_id:
-                try:
-                    store.append_transcript(call_id, role, text)
-                except Exception as exc:  # noqa: BLE001 - never let persistence kill a call
-                    log.warning("transcript.persist_failed", error=str(exc))
-
-    stream = TwilioMediaStream(ws, on_transcript=on_transcript)
+    stream = TwilioMediaStream(ws)  # transcript wired to the session below
     stream.start_reader()
 
     # Twilio sends `start` within the first frames; wait for the call_sid.
@@ -147,6 +151,7 @@ async def media_stream(ws: WebSocket) -> None:
     task = pending.get("task") or {"task_id": None}
     instructions = pending.get("instructions")
 
+    call_id: str | None = None
     if task.get("task_id"):
         try:
             call_id = store.create_call(task["task_id"])["call_id"]
@@ -154,18 +159,14 @@ async def media_stream(ws: WebSocket) -> None:
         except Exception as exc:  # noqa: BLE001
             log.warning("call.create_failed", error=str(exc))
 
-    agent = build_caller_agent(stream, instructions=instructions, brief=task.get("brief"))
+    session = CallSession(stream=stream, task=task, call_id=call_id)
+    stream.set_transcript_cb(session.add_turn)  # route final turns into the session
+
     try:
-        await agent.run(inputs=[stream.input()], outputs=[stream.output()])
-    except* Exception as eg:  # noqa: BLE001 - stream closed / agent stop
-        log.info("ws.agent_run_end", errors=[repr(e) for e in eg.exceptions])
+        await run_call_session(session, stream, instructions=instructions)
     finally:
         await stream.aclose()
-        try:
-            await agent.stop()
-        except Exception:  # noqa: BLE001
-            pass
-        await _finalize(task, call_id, transcript, stream)
+        await _finalize(task, call_id, session.transcript, stream)
 
 
 async def _finalize(task: dict, call_id: str | None, transcript: list[dict], stream) -> None:

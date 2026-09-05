@@ -42,6 +42,10 @@ def test_table_prefix_override():
         state_backend="memory",
         ddb_table_prefix="acme",
         agentcore_memory_id="",
+        supervisor_enabled=True,
+        supervisor_interval_s=6.0,
+        supervisor_max_checks=20,
+        escalation_timeout_s=90.0,
         dashboard_host="127.0.0.1",
         dashboard_port=8000,
     )

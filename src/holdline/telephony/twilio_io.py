@@ -59,6 +59,11 @@ class TwilioMediaStream:
     def start_reader(self) -> None:
         self._reader = asyncio.create_task(self._read_loop(), name="twilio-reader")
 
+    def set_transcript_cb(self, cb: TranscriptCb) -> None:
+        """Swap the transcript sink after construction (the session isn't built
+        until the call_sid arrives)."""
+        self._on_transcript = cb
+
     @property
     def closed(self) -> asyncio.Event:
         return self._closed

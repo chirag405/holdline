@@ -45,13 +45,15 @@ def brief_to_instructions(brief: CallBrief) -> str:
         lines += [f"  - {x}" for x in brief.boundaries.may_agree_to]
 
     if brief.boundaries.must_escalate:
-        lines += ["", "YOU MUST NOT AGREE TO THESE without checking with the account holder:"]
+        lines += ["", "YOU MUST NOT DECIDE THESE YOURSELF -- ask the account holder:"]
         lines += [f"  - {x}" for x in brief.boundaries.must_escalate]
         lines += [
-            "  If one of these comes up, decline it politely for now and restate the "
-            "objective. (The live 'check with the account holder' escalation is wired "
-            "up in a later milestone.)",
-            f"  If you are ever unsure, fall back to: {brief.default_on_timeout}",
+            "  When one comes up: tell the representative \"let me check with the "
+            "account holder, can you hold for a moment?\", then call `escalate_to_user` "
+            "with a short question and the offer details. Keep the line open and act "
+            "on the answer it returns.",
+            f"  If the account holder does not answer in time, fall back to: "
+            f"{brief.default_on_timeout}",
         ]
 
     if brief.success_criteria:

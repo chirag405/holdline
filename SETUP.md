@@ -154,6 +154,39 @@ Offline check:
 python scripts/verify_day4.py
 ```
 
+## Day 5 — Supervisor + mid-call escalation
+
+Two things now watch the call:
+
+- The **Caller** is told to call `escalate_to_user` itself the moment the rep
+  raises anything on the Brief's `must_escalate` list (a retention offer, a fee,
+  a plan change). It says a holding phrase to the rep and the tool blocks — the
+  line stays open — until the account holder answers.
+- The **Supervisor** (`SUPERVISOR_ENABLED=true`) is a text agent that re-reads the
+  transcript every `SUPERVISOR_INTERVAL_S` seconds against the Brief. If the Caller
+  misses a boundary, the Supervisor forces the pause itself.
+
+Either way an escalation becomes a `decisions` row. Answer it while the call holds:
+
+```bash
+python scripts/answer_decision.py                        # list pending
+python scripts/answer_decision.py <decision_id> "hold firm"
+```
+
+(or `GET /decisions` and `POST /decisions/{id}` directly). No answer within
+`ESCALATION_TIMEOUT_S` → the call falls back to the Brief's `default_on_timeout`.
+
+Demo: place the practice-line call with a task whose Brief forbids retention
+offers. When "Jordan" offers 3 months at 50%, the Caller stalls, a decision
+appears, you answer `hold firm`, and the Caller resumes and secures the
+cancellation.
+
+Offline check:
+
+```bash
+python scripts/verify_day5.py
+```
+
 ## Run the tests
 
 ```bash

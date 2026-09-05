@@ -49,6 +49,12 @@ class Settings:
     ddb_table_prefix: str
     agentcore_memory_id: str
 
+    # Supervisor / escalation
+    supervisor_enabled: bool
+    supervisor_interval_s: float
+    supervisor_max_checks: int
+    escalation_timeout_s: float
+
     # Dashboard
     dashboard_host: str
     dashboard_port: int
@@ -80,6 +86,10 @@ def get_settings() -> Settings:
         state_backend=os.environ.get("STATE_BACKEND", "dynamodb"),
         ddb_table_prefix=os.environ.get("DDB_TABLE_PREFIX", "holdline"),
         agentcore_memory_id=os.environ.get("AGENTCORE_MEMORY_ID", ""),
+        supervisor_enabled=os.environ.get("SUPERVISOR_ENABLED", "true").lower() != "false",
+        supervisor_interval_s=float(os.environ.get("SUPERVISOR_INTERVAL_S", "6")),
+        supervisor_max_checks=int(os.environ.get("SUPERVISOR_MAX_CHECKS", "20")),
+        escalation_timeout_s=float(os.environ.get("ESCALATION_TIMEOUT_S", "90")),
         dashboard_host=os.environ.get("DASHBOARD_HOST", "127.0.0.1"),
         dashboard_port=int(os.environ.get("DASHBOARD_PORT", "8000")),
     )

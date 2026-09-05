@@ -29,7 +29,8 @@ def test_includes_all_sections():
     assert "Iron Peak Fitness" in text
     assert "IPF-99123" in text
     assert "KNOWN MENU PATH: main menu: press 2" in text
-    assert "YOU MUST NOT AGREE TO" in text
+    assert "YOU MUST NOT DECIDE THESE YOURSELF" in text
+    assert "escalate_to_user" in text
     assert "retention offer" in text
     assert "hold firm and refuse any counter-offer" in text
     assert "THE CALL HAS SUCCEEDED WHEN:" in text

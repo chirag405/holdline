@@ -2,8 +2,8 @@
 
 Day 3 targets the self-hosted practice IVR with a fixed goal so the full
 dial -> menu -> hold -> rep -> confirmation-number path can run autonomously.
-Day 4 renders the prompt from a `CallBrief`; Day 5 adds `escalate_to_user` +
-the Supervisor.
+Day 4 renders the prompt from a `CallBrief`. Day 5 adds `escalate_to_user`, which
+pauses the call and asks the account holder while the line stays open.
 """
 
 from __future__ import annotations
@@ -36,8 +36,10 @@ HOW TO BEHAVE:
   for Chirag, and ask to cancel the membership.
 - You MAY accept: cancellation effective at the end of the current billing period.
 - If the representative offers a retention deal (a discount, a pause, a downgrade,
-  free months): decline it politely, once, and restate that you want to cancel.
-  (The real "let me check with Chirag" escalation is added in a later milestone.)
+  free months, a plan change): you are NOT authorized to accept or reject it. Tell
+  them "let me check with the account holder, can you hold for a moment?", then
+  call `escalate_to_user` with a short question and the offer details. Act on the
+  answer it returns.
 - When the representative confirms the cancellation AND gives a confirmation or
   reference number, call `record_outcome` with status "cancelled" and that number.
   Then say a short goodbye and call `stop_conversation`.
@@ -48,18 +50,40 @@ HOW TO BEHAVE:
 
 
 def build_caller_agent(
-    stream: Any, *, instructions: str | None = None, brief: dict | None = None
+    stream: Any,
+    *,
+    instructions: str | None = None,
+    brief: dict | None = None,
+    session: Any = None,
 ) -> Any:
     """Create the per-call BidiAgent. `stream` is the live TwilioMediaStream: the
     DTMF tool injects tones into it, and `record_outcome` stashes the result on it
     so the bridge can log/persist it after the call. `brief` (a CallBrief dict) is
-    exposed to the agent via `lookup_task_context` for mid-call recall."""
+    exposed via `lookup_task_context`. `session` (a CallSession) backs
+    `escalate_to_user` -- the pause-and-ask-the-account-holder path."""
     from strands import tool
     from strands.experimental.bidi import BidiAgent
     from strands.experimental.bidi.models.nova_sonic import BidiNovaSonicModel
     from strands.experimental.bidi.tools import stop_conversation
 
     s = get_settings()
+
+    @tool
+    async def escalate_to_user(question: str, options: list[str] | None = None, context: str = "") -> str:
+        """Pause and ask the ACCOUNT HOLDER a question you are not authorized to
+        decide yourself -- a retention offer, a fee, a plan change, anything outside
+        your limits. Say a brief holding phrase to the representative first ("let me
+        check with the account holder, can you hold a moment?"). Keep the line open.
+        This returns the account holder's decision as text; then continue the call.
+
+        Args:
+            question: a short, specific question (ideally yes/no or choose-one).
+            options: 2-4 short choices; put the safe "hold firm" option first.
+            context: one line of context (what the rep offered, in their words).
+        """
+        if session is None:
+            return "No account holder is reachable right now; hold firm on the original request."
+        return await session.escalate(question, options or [], context)
 
     @tool
     def lookup_task_context(question: str = "") -> str:
@@ -120,7 +144,13 @@ def build_caller_agent(
     return BidiAgent(
         model=model,
         system_prompt=instructions or _PRACTICE_GOAL,
-        tools=[press_keys, record_outcome, lookup_task_context, stop_conversation],
+        tools=[
+            press_keys,
+            record_outcome,
+            lookup_task_context,
+            escalate_to_user,
+            stop_conversation,
+        ],
     )
 
 
